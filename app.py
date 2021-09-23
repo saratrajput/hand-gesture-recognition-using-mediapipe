@@ -14,6 +14,13 @@ import mediapipe as mp
 from utils import CvFpsCalc
 from model import KeyPointClassifier
 from model import PointHistoryClassifier
+import zmq
+
+port = "8000"
+
+context = zmq.Context()
+socket = context.socket(zmq.PUB)
+socket.bind("tcp://*:%s" % port)
 
 
 def get_args():
@@ -71,7 +78,7 @@ def main():
     point_history_classifier = PointHistoryClassifier()
 
     # ラベル読み込み ###########################################################
-    with open('model/keypoint_classifier/keypoint_classifier_label.csv',
+    with open('model/keypoint_classifier/new_keypoint_classifier_label.csv',
               encoding='utf-8-sig') as f:
         keypoint_classifier_labels = csv.reader(f)
         keypoint_classifier_labels = [
@@ -97,6 +104,7 @@ def main():
 
     #  ########################################################################
     mode = 0
+    log_count = 0
 
     while True:
         fps = cvFpsCalc.get()
@@ -106,6 +114,8 @@ def main():
         if key == 27:  # ESC
             break
         number, mode = select_mode(key, mode)
+        # number = 8
+        # mode = 1
 
         # カメラキャプチャ #####################################################
         ret, image = cap.read()
@@ -136,11 +146,19 @@ def main():
                 pre_processed_point_history_list = pre_process_point_history(
                     debug_image, point_history)
                 # 学習データ保存
+                # if log_count > 1500:
+                #     exit()
+                # else:
+                #     log_count = log_count + 1
+                #     print(log_count)
+
                 logging_csv(number, mode, pre_processed_landmark_list,
                             pre_processed_point_history_list)
 
                 # ハンドサイン分類
                 hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
+                socket.send_string(str(hand_sign_id))
+
                 if hand_sign_id == 2:  # 指差しサイン
                     point_history.append(landmark_list[8])  # 人差指座標
                 else:
@@ -282,7 +300,7 @@ def logging_csv(number, mode, landmark_list, point_history_list):
     if mode == 0:
         pass
     if mode == 1 and (0 <= number <= 9):
-        csv_path = 'model/keypoint_classifier/keypoint.csv'
+        csv_path = 'model/keypoint_classifier/new_keypoint.csv'
         with open(csv_path, 'a', newline="") as f:
             writer = csv.writer(f)
             writer.writerow([number, *landmark_list])
@@ -503,12 +521,13 @@ def draw_info_text(image, brect, handedness, hand_sign_text,
     cv.putText(image, info_text, (brect[0] + 5, brect[1] - 4),
                cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv.LINE_AA)
 
-    if finger_gesture_text != "":
-        cv.putText(image, "Finger Gesture:" + finger_gesture_text, (10, 60),
-                   cv.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 4, cv.LINE_AA)
-        cv.putText(image, "Finger Gesture:" + finger_gesture_text, (10, 60),
-                   cv.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2,
-                   cv.LINE_AA)
+    # if finger_gesture_text != "":
+        # cv.putText(image, "Finger Gesture:" + finger_gesture_text, (10, 60),
+        #            cv.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 4, cv.LINE_AA)
+        # cv.putText(image, "Finger Gesture:" + finger_gesture_text, (10, 60),
+        #            cv.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2,
+        #            cv.LINE_AA)
+        # pass
 
     return image
 
